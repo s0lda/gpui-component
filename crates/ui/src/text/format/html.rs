@@ -742,6 +742,52 @@ mod tests {
         assert_eq!(node.to_markdown(), "==blue== and ==hex==");
     }
 
+    /// A `<span>`/`<font>` colour must survive parsing as a real foreground mark on
+    /// the text it wraps — including when the colour sits outside inline emphasis,
+    /// which is how a coloured, bold mention is written.
+    #[test]
+    fn test_text_color() {
+        let mut cx = NodeContext::default();
+
+        let html = r#"<p>Hello <span style="color: pink-400"><strong>@opus</strong></span></p>"#;
+        let node = super::parse(html, &mut cx).unwrap();
+
+        let expected = crate::pink(400);
+        let colored: Vec<_> = node
+            .blocks
+            .iter()
+            .flat_map(|block| match block {
+                BlockNode::Paragraph(paragraph) => paragraph.children.clone(),
+                _ => vec![],
+            })
+            .flat_map(|inline| inline.marks.clone())
+            .filter(|(_, mark)| mark.color == Some(expected))
+            .collect();
+
+        assert!(
+            !colored.is_empty(),
+            "a <span style=\"color: …\"> produced no coloured mark: {:?}",
+            node.blocks
+        );
+        // The colour applies to the mention, and the emphasis inside it survives too.
+        assert!(colored.iter().any(|(_, mark)| mark.bold));
+
+        // `<font color>` is the other spelling and must work identically.
+        let html = r#"<p><font color="purple-400">file</font></p>"#;
+        let node = super::parse(html, &mut cx).unwrap();
+        assert!(
+            node.blocks
+                .iter()
+                .flat_map(|block| match block {
+                    BlockNode::Paragraph(paragraph) => paragraph.children.clone(),
+                    _ => vec![],
+                })
+                .flat_map(|inline| inline.marks.clone())
+                .any(|(_, mark)| mark.color == Some(crate::purple(400))),
+            "<font color> produced no coloured mark"
+        );
+    }
+
     #[test]
     fn test_keep_spaces() {
         let html = r#"<p>and <code>code</code> text</p>"#;

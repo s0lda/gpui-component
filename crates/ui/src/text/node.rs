@@ -348,6 +348,9 @@ impl TextMark {
         if other.highlight.is_some() {
             self.highlight = other.highlight;
         }
+        if other.color.is_some() {
+            self.color = other.color;
+        }
         if let Some(link) = other.link {
             self.link = Some(link);
         }
