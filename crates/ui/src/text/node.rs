@@ -286,6 +286,13 @@ pub struct TextMark {
     ///
     /// `None` means the text is not highlighted.
     pub highlight: Option<Hsla>,
+    /// Foreground color of the text, from a `color` attribute or a `color:`
+    /// declaration in a `style` attribute.
+    ///
+    /// `None` means the text uses the inherited color. A `link` overrides this,
+    /// since a link that does not look like a link is a worse outcome than a
+    /// color that is ignored.
+    pub color: Option<Hsla>,
     pub link: Option<LinkMark>,
 }
 
@@ -318,6 +325,12 @@ impl TextMark {
     /// Mark the text as highlighted (`<mark>`) with the given background color.
     pub fn highlight(mut self, color: Hsla) -> Self {
         self.highlight = Some(color);
+        self
+    }
+
+    /// Set the foreground color of the text.
+    pub fn color(mut self, color: Hsla) -> Self {
+        self.color = Some(color);
         self
     }
 
@@ -888,6 +901,9 @@ impl Paragraph {
                     if let Some(color) = style.highlight {
                         highlight.background_color = Some(color);
                     }
+                    if let Some(color) = style.color {
+                        highlight.color = Some(color);
+                    }
 
                     if let Some(mut link_mark) = style.link.clone() {
                         highlight.color = Some(cx.theme().link);
@@ -1001,6 +1017,9 @@ impl Paragraph {
                     }
                     if let Some(color) = style.highlight {
                         highlight.background_color = Some(color);
+                    }
+                    if let Some(color) = style.color {
+                        highlight.color = Some(color);
                     }
 
                     if let Some(mut link_mark) = style.link.clone() {

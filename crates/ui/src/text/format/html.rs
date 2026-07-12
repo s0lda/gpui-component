@@ -106,6 +106,32 @@ fn attr_value(attrs: &RefCell<Vec<html5ever::Attribute>>, name: LocalName) -> Op
 /// Reads the `color` attribute first, then the `background-color` declaration
 /// from the `style` attribute. Color values are parsed by [`crate::try_parse_color`],
 /// supporting hex (`#3366ff`) and Tailwind expressions (`blue`, `blue-200`, `blue/30`).
+/// Get the foreground color for a `<span>` or `<font>` element.
+///
+/// Reads the `color` attribute first (`<font color="red">`), then a `color:`
+/// declaration in the `style` attribute (`<span style="color: red">`). Values are
+/// parsed by [`crate::try_parse_color`], so both named scales (`pink-400`) and
+/// hex are accepted.
+fn text_color(attrs: &RefCell<Vec<html5ever::Attribute>>) -> Option<Hsla> {
+    let color_attr = attrs.borrow().iter().find_map(|attr| {
+        if &*attr.name.local == "color" {
+            Some(attr.value.to_string())
+        } else {
+            None
+        }
+    });
+
+    if let Some(value) = color_attr
+        && let Ok(color) = crate::try_parse_color(value.trim())
+    {
+        return Some(color);
+    }
+
+    style_attrs(attrs)
+        .get("color")
+        .and_then(|v| crate::try_parse_color(v.trim()).ok())
+}
+
 fn mark_color(attrs: &RefCell<Vec<html5ever::Attribute>>) -> Option<Hsla> {
     let color_attr = attrs.borrow().iter().find_map(|attr| {
         if &*attr.name.local == "color" {
@@ -346,6 +372,12 @@ fn parse_paragraph(paragraph: &mut Paragraph, node: &Rc<Node>) {
             }
             local_name!("code") => {
                 merge_children_with_mark(node, paragraph, Some(TextMark::default().code()));
+            }
+            local_name!("span") | local_name!("font") => {
+                let mark = text_color(&attrs)
+                    .map(|color| TextMark::default().color(color))
+                    .unwrap_or_default();
+                merge_children_with_mark(node, paragraph, Some(mark));
             }
             local_name!("mark") => {
                 let color = mark_color(&attrs).unwrap_or_else(|| crate::yellow(200));
