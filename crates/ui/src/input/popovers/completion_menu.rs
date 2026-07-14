@@ -397,9 +397,21 @@ impl Render for CompletionMenu {
             return Empty.into_any_element();
         }
 
-        let Some(pos) = self.origin(cx) else {
-            return Empty.into_any_element();
-        };
+        let Some(mut pos) = self.origin(cx) else { return Empty.into_any_element(); };
+        let abs_pos = self.editor.read(cx).input_bounds.origin + pos;
+        let mut max_height = MAX_MENU_HEIGHT;
+        
+        // Flip up if it exceeds the window bounds
+        if abs_pos.y + max_height > window.bounds().size.height {
+            let editor = self.editor.read(cx);
+            if let Some(last_layout) = editor.last_layout.as_ref() {
+                if let Some(cursor_origin) = last_layout.cursor_bounds.map(|b| b.origin) {
+                    let scroll_origin = editor.scroll_handle.offset();
+                    // Origin above the cursor, shifted up by max_height + padding
+                    pos.y = scroll_origin.y + cursor_origin.y - editor.input_bounds.origin.y - max_height - px(4.);
+                }
+            }
+        }
 
         let selected_documentation = self
             .list
