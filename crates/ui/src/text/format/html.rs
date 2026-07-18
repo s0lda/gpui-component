@@ -645,6 +645,9 @@ fn parse_node(
                     }
                 } else {
                     // Others to as Inline
+                    if cx.inside_pre {
+                        paragraph.nowrap = true;
+                    }
                     parse_paragraph(paragraph, node);
 
                     if paragraph.is_image() {
@@ -886,7 +889,7 @@ mod tests {
             }
         );
 
-        let html = r#"<pre>test</pre>"#;
+        let html = r#"<pre><span>test</span></pre>"#;
         let node = super::parse(html, &mut cx).unwrap();
         assert_eq!(
             node,
