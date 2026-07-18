@@ -191,23 +191,28 @@ where
                     return self.w.write_all(contents.as_bytes());
                 }
 
-                // Check if parent is whitespace preserving element or contains code (<script>, <style>)
-                let (skip_collapse_whitespace, contains_code) =
-                    ctx.as_ref().map_or((false, false), |ctx| {
-                        if let NodeData::Element { name, .. } = &ctx.parent.data {
-                            let name = name.local.as_ref();
-
-                            (preserve_whitespace(name), contains_code(name))
-                        } else {
-                            (false, false)
+                // Check if any ancestor is a whitespace preserving element or contains code (<script>, <style>)
+                let mut skip_collapse_whitespace = false;
+                let mut has_code = false;
+                let mut curr_ctx = ctx.as_ref();
+                while let Some(c) = curr_ctx {
+                    if let NodeData::Element { name, .. } = &c.parent.data {
+                        let name = name.local.as_ref();
+                        if preserve_whitespace(name) {
+                            skip_collapse_whitespace = true;
                         }
-                    });
+                        if contains_code(name) {
+                            has_code = true;
+                        }
+                    }
+                    curr_ctx = c.parent_context;
+                }
 
                 if skip_collapse_whitespace {
                     return self.w.write_all(contents.as_bytes());
                 }
 
-                if contains_code {
+                if has_code {
                     return self
                         .w
                         .write_all(contents.trim_matches(is_ascii_whitespace).as_bytes());

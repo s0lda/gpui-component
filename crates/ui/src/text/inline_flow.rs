@@ -23,6 +23,7 @@ const IMAGE_LEN: usize = 1;
 pub(super) struct InlineFlow {
     id: ElementId,
     items: Vec<InlineFlowItem>,
+    nowrap: bool,
 }
 
 pub(super) enum InlineFlowItem {
@@ -100,10 +101,15 @@ enum LineFragmentKind {
 }
 
 impl InlineFlow {
-    pub(super) fn new(id: impl Into<ElementId>, items: Vec<InlineFlowItem>) -> Self {
+    pub(super) fn new(
+        id: impl Into<ElementId>,
+        items: Vec<InlineFlowItem>,
+        nowrap: bool,
+    ) -> Self {
         Self {
             id: id.into(),
             items,
+            nowrap,
         }
     }
 
@@ -184,10 +190,13 @@ impl Element for InlineFlow {
         let layout_state = InlineFlowLayoutState::default();
         let layout_ref = layout_state.layout.clone();
 
+        let nowrap = self.nowrap;
         let layout_id = window.request_measured_layout(Default::default(), {
             move |known_dimensions, available_space, window, _cx| {
                 let text_style = window.text_style();
-                let wrap_width = if text_style.white_space == WhiteSpace::Normal {
+                let wrap_width = if nowrap {
+                    None
+                } else if text_style.white_space == WhiteSpace::Normal {
                     known_dimensions.width.or(match available_space.width {
                         AvailableSpace::Definite(width) => Some(width),
                         _ => None,
@@ -255,7 +264,7 @@ impl Element for InlineFlow {
                     }
 
                     let mut element =
-                        Inline::new(elements.len(), state, links, highlights).into_any_element();
+                        Inline::new(elements.len(), state, links, highlights, self.nowrap).into_any_element();
                     element.prepaint_as_root(
                         bounds.origin + origin,
                         size(

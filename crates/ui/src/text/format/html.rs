@@ -442,6 +442,7 @@ fn parse_node(
         NodeData::Text { ref contents } => {
             let text = contents.borrow().to_string();
             if text.len() > 0 {
+                paragraph.nowrap = cx.inside_pre;
                 paragraph.push_str(&text);
             }
 
@@ -622,11 +623,16 @@ fn parse_node(
                     consume_paragraph(&mut children, paragraph);
 
                     // Inner of the block element -- The "Inner text of block element"
+                    let was_pre = cx.inside_pre;
+                    if name.local == local_name!("pre") {
+                        cx.inside_pre = true;
+                    }
                     for child in node.children.borrow().iter() {
                         if let Some(child_node) = parse_node(child, paragraph, cx) {
                             children.push(child_node);
                         }
                     }
+                    cx.inside_pre = was_pre;
                     consume_paragraph(&mut children, paragraph);
 
                     if children.is_empty() {
@@ -875,6 +881,21 @@ mod tests {
                         title: Some("Example Image".to_string().into()),
                         ..Default::default()
                     })],
+                    ..Default::default()
+                })]
+            }
+        );
+
+        let html = r#"<pre>test</pre>"#;
+        let node = super::parse(html, &mut cx).unwrap();
+        assert_eq!(
+            node,
+            ParsedDocument {
+                source: html.to_string().into(),
+                blocks: vec![BlockNode::Paragraph(Paragraph {
+                    span: None,
+                    children: vec![InlineNode::new("test")],
+                    nowrap: true,
                     ..Default::default()
                 })]
             }

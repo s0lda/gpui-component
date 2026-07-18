@@ -454,6 +454,7 @@ pub(crate) struct Paragraph {
     pub(super) link_refs: HashMap<SharedString, SharedString>,
 
     pub(crate) state: Arc<Mutex<InlineState>>,
+    pub(crate) nowrap: bool,
 }
 
 impl PartialEq for Paragraph {
@@ -461,6 +462,7 @@ impl PartialEq for Paragraph {
         self.span == other.span
             && self.children == other.children
             && self.link_refs == other.link_refs
+            && self.nowrap == other.nowrap
     }
 }
 
@@ -471,6 +473,7 @@ impl Paragraph {
             children: vec![InlineNode::new(&text)],
             link_refs: HashMap::new(),
             state: Arc::new(Mutex::new(InlineState::default())),
+            nowrap: false,
         }
     }
 
@@ -571,6 +574,7 @@ impl Paragraph {
                 children: vec![],
                 link_refs: Default::default(),
                 state: Arc::new(Mutex::new(InlineState::default())),
+                nowrap: self.nowrap,
             },
         )
     }
@@ -765,6 +769,7 @@ impl CodeBlock {
                         self.state.clone(),
                         vec![],
                         self.styles(),
+                        false,
                     ))
                     .when_some(node_cx.code_block_actions.clone(), |this, actions| {
                         this.child(
@@ -793,6 +798,7 @@ pub(crate) struct NodeContext {
     pub(crate) style: TextViewStyle,
     pub(crate) code_block_actions: Option<Arc<CodeBlockActionsFn>>,
     pub(crate) markdown_extensions: Arc<MarkdownExtensions>,
+    pub(crate) inside_pre: bool,
 }
 
 impl NodeContext {
@@ -803,7 +809,9 @@ impl NodeContext {
 
 impl PartialEq for NodeContext {
     fn eq(&self, other: &Self) -> bool {
-        self.link_refs == other.link_refs && self.style == other.style
+        self.link_refs == other.link_refs
+            && self.style == other.style
+            && self.inside_pre == other.inside_pre
         // Note: code_block_actions and markdown_extensions are intentionally
         // not compared (closures can't be compared)
     }
@@ -818,6 +826,7 @@ impl Paragraph {
             return InlineFlow::new(
                 span.unwrap_or_default(),
                 self.inline_flow_items(node_cx, cx),
+                self.nowrap,
             )
             .into_any_element();
         }
@@ -845,6 +854,7 @@ impl Paragraph {
                             inline_node.state.clone(),
                             links.clone(),
                             highlights.clone(),
+                            self.nowrap,
                         )
                         .into_any_element(),
                     );
@@ -940,7 +950,7 @@ impl Paragraph {
                 state.set_text(text.into());
             }
             child_nodes
-                .push(Inline::new(ix, self.state.clone(), links, highlights).into_any_element());
+                .push(Inline::new(ix, self.state.clone(), links, highlights, self.nowrap).into_any_element());
         }
 
         div()
@@ -1647,11 +1657,16 @@ impl BlockNode {
                     node.render_block(NodeRenderOptions { ix, ..options }, node_cx, window, cx)
                 }))
                 .into_any_element(),
-            BlockNode::Paragraph(paragraph) => div()
-                .id(("p", ix))
-                .pb(mb)
-                .child(paragraph.render(node_cx, window, cx))
-                .into_any_element(),
+            BlockNode::Paragraph(paragraph) => {
+                let mut el = div()
+                    .id(("p", ix))
+                    .pb(mb);
+                if paragraph.nowrap {
+                    el = el.whitespace_nowrap();
+                }
+                el.child(paragraph.render(node_cx, window, cx))
+                    .into_any_element()
+            },
             BlockNode::Heading {
                 level, children, ..
             } => {

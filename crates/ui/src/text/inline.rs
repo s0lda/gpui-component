@@ -28,6 +28,7 @@ pub(super) struct Inline {
     styled_text: StyledText,
 
     state: Arc<Mutex<InlineState>>,
+    nowrap: bool,
 }
 
 /// The inline text state, used RefCell to keep the selection state.
@@ -52,6 +53,7 @@ impl Inline {
         state: Arc<Mutex<InlineState>>,
         links: Vec<(Range<usize>, LinkMark)>,
         highlights: Vec<(Range<usize>, HighlightStyle)>,
+        nowrap: bool,
     ) -> Self {
         let text = state
             .lock()
@@ -65,6 +67,7 @@ impl Inline {
             text: text.clone(),
             styled_text: StyledText::new(text),
             state,
+            nowrap,
         }
     }
 
@@ -338,7 +341,10 @@ impl Element for Inline {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
-        let text_style = window.text_style();
+        let mut text_style = window.text_style();
+        if self.nowrap {
+            text_style.white_space = gpui::WhiteSpace::Nowrap;
+        }
 
         let mut runs = Vec::new();
         let mut ix = 0;
