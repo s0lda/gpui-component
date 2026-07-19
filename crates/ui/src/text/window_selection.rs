@@ -815,6 +815,12 @@ impl Element for TextSelectionController {
                 return;
             }
             Root::update(window, cx, |root, window, cx| {
+                if event.pressed_button != Some(MouseButton::Left) {
+                    if root.text_selection.is_selecting {
+                        root.end_text_selection(cx);
+                    }
+                    return;
+                }
                 root.update_text_selection(event.position, window, cx);
             });
         });
