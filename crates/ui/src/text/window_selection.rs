@@ -787,6 +787,9 @@ impl Element for TextSelectionController {
             if event.button != MouseButton::Left {
                 return;
             }
+            if event.first_mouse {
+                return; // Ignore clicks whose sole purpose is window activation
+            }
             if phase.capture() {
                 // Reset the suppression flag at the start of every press, then
                 // clear the previous selection (browser behavior), even when an
@@ -1112,6 +1115,31 @@ mod tests {
 
         let text = window_selected_text(cx);
         assert!(text.is_empty(), "expected no selection, got: {text:?}");
+    }
+
+    #[gpui::test]
+    fn first_mouse_clicks_do_not_start_selection(cx: &mut TestAppContext) {
+        let (_, cx) = setup(true, cx);
+
+        let position = point(px(20.), px(15.));
+        cx.simulate_event(MouseDownEvent {
+            position,
+            modifiers: Modifiers::default(),
+            button: MouseButton::Left,
+            click_count: 1,
+            first_mouse: true,
+        });
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+
+        cx.simulate_mouse_move(point(px(300.), px(70.)), Some(MouseButton::Left), Modifiers::default());
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+
+        let text = window_selected_text(cx);
+        assert!(text.is_empty(), "expected first_mouse click to not start selection, got: {text:?}");
     }
 
     #[gpui::test]
