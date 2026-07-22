@@ -751,38 +751,50 @@ impl CodeBlock {
         cx: &mut App,
     ) -> AnyElement {
         let style = &node_cx.style;
+        let lang = self.lang.clone();
 
         div()
             .when(!options.is_last, |this| this.pb(style.paragraph_gap))
             .child(
-                div()
+                v_flex()
                     .id(("codeblock", options.ix))
-                    .p_3()
                     .rounded(cx.theme().radius)
                     .bg(cx.theme().tokens.muted)
-                    .font_family(cx.theme().mono_font_family.clone())
-                    .text_size(cx.theme().mono_font_size)
+                    .overflow_hidden()
                     .relative()
                     .refine_style(&style.code_block)
-                    .child(Inline::new(
-                        "code",
-                        self.state.clone(),
-                        vec![],
-                        self.styles(),
-                        false,
-                    ))
-                    .when_some(node_cx.code_block_actions.clone(), |this, actions| {
-                        this.child(
-                            div()
-                                .id("actions")
-                                .absolute()
-                                .top_2()
-                                .right_2()
-                                .bg(cx.theme().tokens.muted)
-                                .rounded(cx.theme().radius)
-                                .child(actions(&self, window, cx)),
-                        )
-                    }),
+                    .child(
+                        h_flex()
+                            .id("codeblock-header")
+                            .items_center()
+                            .justify_between()
+                            .px_3()
+                            .py_1()
+                            .border_b_1()
+                            .border_color(cx.theme().tokens.border)
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(lang.unwrap_or_default()),
+                            )
+                            .when_some(node_cx.code_block_actions.clone(), |this, actions| {
+                                this.child(actions(&self, window, cx))
+                            }),
+                    )
+                    .child(
+                        div()
+                            .p_3()
+                            .font_family(cx.theme().mono_font_family.clone())
+                            .text_size(cx.theme().mono_font_size)
+                            .child(Inline::new(
+                                "code",
+                                self.state.clone(),
+                                vec![],
+                                self.styles(),
+                                false,
+                            )),
+                    ),
             )
             .into_any_element()
     }
