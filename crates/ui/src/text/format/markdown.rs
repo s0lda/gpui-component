@@ -82,25 +82,23 @@ fn push_merged(
     paragraph.push(node);
 }
 
-/// The colors `hadron-chamber`'s `color_mentions` used to bake into an inline
-/// `<span style="color: ...">` before mentions moved to a native mark: an
-/// `@mention` is `pink-400`, a `/command` is `fuchsia-400`. Kept as the same
-/// literal Tailwind names so the two paths read identically.
+/// The colors used for native markdown inline mark highlighting:
+/// - Quark handles (`@Agy`, `@Sonnet`): `pink-400`
+/// - File mentions (`@README.md`, `@src/main.rs`): `purple-400`
+/// - Slash commands (`/learn`, `/plan`, `/goal`): `amber-400`
 const MENTION_COLOR_NAME: &str = "pink-400";
-const COMMAND_COLOR_NAME: &str = "fuchsia-400";
+const FILE_MENTION_COLOR_NAME: &str = "purple-400";
+const COMMAND_COLOR_NAME: &str = "amber-400";
 
-/// Scan a plain markdown text run for `@mention` and `/command` tokens and mark
-/// each one bold + colored, in a single `InlineNode` with sparse marks over the
+/// Scan a plain markdown text run for `@mention` (quarks & files) and `/command` tokens
+/// and mark each one bold + colored, in a single `InlineNode` with sparse marks over the
 /// unmatched text in between.
 ///
-/// This has no quark roster to consult (unlike `color_mentions`, which lives in
-/// `hadron-chamber` and only colors names the roster actually has), so it lights
-/// up any `@word`-shaped or `/word`-shaped token at a word boundary — a
-/// reasonable trade for a generic renderer with no domain knowledge. Boundary
-/// rules: an `@mention` cannot be preceded by an alphanumeric (so `user@host` is
+/// Quark handles (`@Agy`) render in `pink-400`, file paths (`@README.md`, `@src/app.rs`)
+/// render in `purple-400`, and slash commands (`/learn`) render in `amber-400`.
+/// Boundary rules: an `@mention` cannot be preceded by an alphanumeric (so `user@host` is
 /// left alone), a `/command` must start the run or follow whitespace (so a file
-/// path like `src/app.rs` is left alone, mirroring `hadron-chamber`'s
-/// `extract_completion_query` word-boundary rule for the same token).
+/// path like `src/app.rs` is left alone).
 fn push_mention_and_command_marks(paragraph: &mut Paragraph, text: &str) {
     if text.is_empty() {
         return;
@@ -116,21 +114,56 @@ fn push_mention_and_command_marks(paragraph: &mut Paragraph, text: &str) {
 
         if is_mention_start || is_command_start {
             let mut end = start + ch.len_utf8();
-            while let Some(&(idx, nc)) = chars.peek() {
-                if nc.is_alphanumeric() || nc == '-' || nc == '_' {
-                    end = idx + nc.len_utf8();
-                    chars.next();
-                } else {
-                    break;
+            if is_mention_start {
+                while let Some(&(idx, nc)) = chars.peek() {
+                    if nc.is_alphanumeric() || nc == '-' || nc == '_' || nc == '.' || nc == '/' || nc == '\\' {
+                        end = idx + nc.len_utf8();
+                        chars.next();
+                    } else {
+                        break;
+                    }
+                }
+                while end > start + ch.len_utf8() {
+                    let last_char = text[start..end].chars().next_back().unwrap();
+                    if matches!(last_char, '.' | ',' | ';' | ':' | '!' | '?' | ')' | ']' | '>') {
+                        if last_char == '.' {
+                            let token_body = &text[start + ch.len_utf8()..end];
+                            if token_body.trim_end_matches('.').contains('.') {
+                                end -= last_char.len_utf8();
+                                continue;
+                            } else {
+                                break;
+                            }
+                        }
+                        end -= last_char.len_utf8();
+                    } else {
+                        break;
+                    }
+                }
+            } else {
+                while let Some(&(idx, nc)) = chars.peek() {
+                    if nc.is_alphanumeric() || nc == '-' || nc == '_' {
+                        end = idx + nc.len_utf8();
+                        chars.next();
+                    } else {
+                        break;
+                    }
                 }
             }
+
             // A bare `@` or `/` with no identifier following is not a token.
             if end > start + ch.len_utf8() {
-                let color_name = if is_mention_start {
-                    MENTION_COLOR_NAME
-                } else {
+                let color_name = if is_command_start {
                     COMMAND_COLOR_NAME
+                } else {
+                    let token_body = &text[start + ch.len_utf8()..end];
+                    if token_body.contains('.') || token_body.contains('/') || token_body.contains('\\') {
+                        FILE_MENTION_COLOR_NAME
+                    } else {
+                        MENTION_COLOR_NAME
+                    }
                 };
+
                 if let Ok(color) = crate::try_parse_color(color_name) {
                     marks.push((start..end, TextMark::default().bold().color(color)));
                 }
@@ -668,6 +701,47 @@ mod tests {
         assert_eq!(
             command_mark.color,
             crate::try_parse_color(COMMAND_COLOR_NAME).ok()
+        );
+    }
+
+    #[test]
+    fn parses_file_mentions_in_markdown() {
+        let mut cx = NodeContext::default();
+        let document = parse(
+            "Check @README.md and @src/main.rs for info.",
+            &mut cx,
+            &HighlightTheme::default_light(),
+        )
+        .unwrap();
+
+        let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
+            panic!("expected paragraph");
+        };
+        let node = &paragraph.children[0];
+
+        let readme_range = "Check ".len().."Check @README.md".len();
+        let (_, readme_mark) = node
+            .marks
+            .iter()
+            .find(|(range, _)| *range == readme_range)
+            .expect("expected a mark over @README.md");
+        assert!(readme_mark.bold);
+        assert_eq!(
+            readme_mark.color,
+            crate::try_parse_color(FILE_MENTION_COLOR_NAME).ok()
+        );
+
+        let src_start = "Check @README.md and ".len();
+        let src_range = src_start.."Check @README.md and @src/main.rs".len();
+        let (_, src_mark) = node
+            .marks
+            .iter()
+            .find(|(range, _)| *range == src_range)
+            .expect("expected a mark over @src/main.rs");
+        assert!(src_mark.bold);
+        assert_eq!(
+            src_mark.color,
+            crate::try_parse_color(FILE_MENTION_COLOR_NAME).ok()
         );
     }
 
