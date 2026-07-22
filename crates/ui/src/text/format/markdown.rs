@@ -82,6 +82,69 @@ fn push_merged(
     paragraph.push(node);
 }
 
+/// The colors `hadron-chamber`'s `color_mentions` used to bake into an inline
+/// `<span style="color: ...">` before mentions moved to a native mark: an
+/// `@mention` is `pink-400`, a `/command` is `fuchsia-400`. Kept as the same
+/// literal Tailwind names so the two paths read identically.
+const MENTION_COLOR_NAME: &str = "pink-400";
+const COMMAND_COLOR_NAME: &str = "fuchsia-400";
+
+/// Scan a plain markdown text run for `@mention` and `/command` tokens and mark
+/// each one bold + colored, in a single `InlineNode` with sparse marks over the
+/// unmatched text in between.
+///
+/// This has no quark roster to consult (unlike `color_mentions`, which lives in
+/// `hadron-chamber` and only colors names the roster actually has), so it lights
+/// up any `@word`-shaped or `/word`-shaped token at a word boundary — a
+/// reasonable trade for a generic renderer with no domain knowledge. Boundary
+/// rules: an `@mention` cannot be preceded by an alphanumeric (so `user@host` is
+/// left alone), a `/command` must start the run or follow whitespace (so a file
+/// path like `src/app.rs` is left alone, mirroring `hadron-chamber`'s
+/// `extract_completion_query` word-boundary rule for the same token).
+fn push_mention_and_command_marks(paragraph: &mut Paragraph, text: &str) {
+    if text.is_empty() {
+        return;
+    }
+
+    let mut marks: Vec<(Range<usize>, TextMark)> = Vec::new();
+    let mut prev_char: Option<char> = None;
+    let mut chars = text.char_indices().peekable();
+
+    while let Some((start, ch)) = chars.next() {
+        let is_mention_start = ch == '@' && !prev_char.is_some_and(|c| c.is_alphanumeric());
+        let is_command_start = ch == '/' && prev_char.is_none_or(|c| c.is_whitespace());
+
+        if is_mention_start || is_command_start {
+            let mut end = start + ch.len_utf8();
+            while let Some(&(idx, nc)) = chars.peek() {
+                if nc.is_alphanumeric() || nc == '-' || nc == '_' {
+                    end = idx + nc.len_utf8();
+                    chars.next();
+                } else {
+                    break;
+                }
+            }
+            // A bare `@` or `/` with no identifier following is not a token.
+            if end > start + ch.len_utf8() {
+                let color_name = if is_mention_start {
+                    MENTION_COLOR_NAME
+                } else {
+                    COMMAND_COLOR_NAME
+                };
+                if let Ok(color) = crate::try_parse_color(color_name) {
+                    marks.push((start..end, TextMark::default().bold().color(color)));
+                }
+                prev_char = text[start..end].chars().next_back();
+                continue;
+            }
+        }
+
+        prev_char = Some(ch);
+    }
+
+    paragraph.push(InlineNode::new(text).marks(marks));
+}
+
 /// Parse `children` and apply `mark` across each emitted text run.
 ///
 /// Nested child marks are kept and shifted to match the combined text for the
@@ -182,7 +245,7 @@ fn parse_paragraph(paragraph: &mut Paragraph, node: &mdast::Node, cx: &mut NodeC
         }
         Node::Text(val) => {
             text = val.value.clone();
-            paragraph.push_str(&val.value)
+            push_mention_and_command_marks(paragraph, &val.value);
         }
         Node::Emphasis(val) => {
             text = merge_children_with_mark(
@@ -562,6 +625,93 @@ mod tests {
                 .iter()
                 .any(|(_, mark)| mark.bold && mark.italic),
             "nested emphasis should produce a bold and italic mark"
+        );
+    }
+
+    #[test]
+    fn parses_mentions_and_slash_commands_in_markdown() {
+        let mut cx = NodeContext::default();
+        let document = parse(
+            "Hello @Sonnet and /team-brainstorm!",
+            &mut cx,
+            &HighlightTheme::default_light(),
+        )
+        .unwrap();
+
+        let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
+            panic!("expected paragraph");
+        };
+        assert_eq!(paragraph.children.len(), 1, "one run with sparse marks");
+        let node = &paragraph.children[0];
+        assert_eq!(node.text.as_ref(), "Hello @Sonnet and /team-brainstorm!");
+
+        let mention_range = "Hello ".len().."Hello @Sonnet".len();
+        let (_, mention_mark) = node
+            .marks
+            .iter()
+            .find(|(range, _)| *range == mention_range)
+            .expect("expected a mark over @Sonnet");
+        assert!(mention_mark.bold);
+        assert_eq!(
+            mention_mark.color,
+            crate::try_parse_color(MENTION_COLOR_NAME).ok()
+        );
+
+        let command_start = "Hello @Sonnet and ".len();
+        let command_range = command_start.."Hello @Sonnet and /team-brainstorm".len();
+        let (_, command_mark) = node
+            .marks
+            .iter()
+            .find(|(range, _)| *range == command_range)
+            .expect("expected a mark over /team-brainstorm");
+        assert!(command_mark.bold);
+        assert_eq!(
+            command_mark.color,
+            crate::try_parse_color(COMMAND_COLOR_NAME).ok()
+        );
+    }
+
+    #[test]
+    fn a_slash_inside_a_file_path_is_not_a_command() {
+        let mut cx = NodeContext::default();
+        let document = parse(
+            "See src/app.rs for details.",
+            &mut cx,
+            &HighlightTheme::default_light(),
+        )
+        .unwrap();
+
+        let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
+            panic!("expected paragraph");
+        };
+        assert!(
+            paragraph.children.iter().all(|n| n.marks.is_empty()),
+            "a mid-word slash in a file path must not be marked as a command"
+        );
+    }
+
+    #[test]
+    fn an_at_sign_inside_an_email_is_not_a_mention() {
+        let mut cx = NodeContext::default();
+        let document = parse(
+            "Reach me at jake@example.com anytime.",
+            &mut cx,
+            &HighlightTheme::default_light(),
+        )
+        .unwrap();
+
+        let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
+            panic!("expected paragraph");
+        };
+        let mention_color = crate::try_parse_color(MENTION_COLOR_NAME).ok();
+        assert!(
+            paragraph
+                .children
+                .iter()
+                .flat_map(|n| &n.marks)
+                .all(|(_, mark)| mark.color != mention_color),
+            "an `@` preceded by an alphanumeric must not be marked as a mention: {:#?}",
+            paragraph.children
         );
     }
 
