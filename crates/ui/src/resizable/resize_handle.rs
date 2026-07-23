@@ -108,7 +108,12 @@ impl<T: 'static, E: 'static + Render> Element for ResizeHandle<T, E> {
             let bg_color = if state.is_active() {
                 cx.theme().drag_border
             } else {
-                cx.theme().border
+                // Invisible at rest, not the theme's shared `border` token: on a bright
+                // field a hairline here reads as a stray seam between panels, and
+                // `border` is reused by every popover/dialog/tab/input elsewhere in the
+                // app — hardcoding transparent here keeps this ONE handle quiet without
+                // taking every other bordered element down with it.
+                gpui::rgba(0x00000000).into()
             };
 
             let mut el = div()
