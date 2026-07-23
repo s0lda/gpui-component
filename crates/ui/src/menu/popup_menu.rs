@@ -1327,6 +1327,11 @@ impl Render for PopupMenu {
             .on_action(cx.listener(Self::dismiss))
             .on_mouse_down_out(cx.listener(Self::on_mouse_down_out))
             .popover_style(cx)
+            // A crisp hairline around context/dropdown menus. `popover_style` borders with
+            // `theme().border`, which some hosts set transparent to drop idle hairlines on
+            // their own surfaces (e.g. resize handles); a menu still needs a visible edge, so
+            // derive one from the foreground that stays legible on any popover background.
+            .border_color(cx.theme().popover_foreground.opacity(0.14))
             .text_color(cx.theme().popover_foreground)
             .relative()
             .occlude()
