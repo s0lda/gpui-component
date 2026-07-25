@@ -765,6 +765,27 @@ mod tests {
     }
 
     #[test]
+    fn test_bold_text_with_inline_code_and_mentions() {
+        let mut cx = NodeContext::default();
+        let document = parse(
+            "This is **bold text with `code` and @Agy** here.",
+            &mut cx,
+            &HighlightTheme::default_light(),
+        )
+        .unwrap();
+
+        let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
+            panic!("expected paragraph");
+        };
+
+        assert_eq!(paragraph.children.len(), 3);
+        let bold_node = &paragraph.children[1];
+        assert_eq!(bold_node.text, "bold text with code and @Agy");
+        // Must contain bold mark covering the entire range
+        assert!(bold_node.marks.iter().any(|(range, mark)| mark.bold && *range == (0..28)));
+    }
+
+    #[test]
     fn an_at_sign_inside_an_email_is_not_a_mention() {
         let mut cx = NodeContext::default();
         let document = parse(

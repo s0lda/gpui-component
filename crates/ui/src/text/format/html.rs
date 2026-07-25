@@ -897,7 +897,7 @@ mod tests {
                 source: html.to_string().into(),
                 blocks: vec![BlockNode::Paragraph(Paragraph {
                     span: None,
-                    children: vec![InlineNode::new("test")],
+                    children: vec![InlineNode::new("test").marks(vec![(0..4, crate::text::TextMark::default())])],
                     nowrap: true,
                     ..Default::default()
                 })]
