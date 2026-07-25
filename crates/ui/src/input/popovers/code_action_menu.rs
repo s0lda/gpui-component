@@ -218,14 +218,17 @@ impl CodeActionMenu {
             return false;
         }
 
-        cx.propagate();
         if input::Enter::is_primary(&*action) {
+            cx.stop_propagation();
             self.on_action_enter(window, cx);
         } else if action.partial_eq(&input::Escape) {
+            cx.stop_propagation();
             self.on_action_escape(window, cx);
         } else if action.partial_eq(&input::MoveUp) {
+            cx.stop_propagation();
             self.on_action_up(window, cx);
         } else if action.partial_eq(&input::MoveDown) {
+            cx.stop_propagation();
             self.on_action_down(window, cx);
         } else {
             return false;
