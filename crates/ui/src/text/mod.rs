@@ -2,6 +2,7 @@ mod document;
 mod format;
 mod inline;
 mod inline_flow;
+mod link_handler;
 mod markdown_ext;
 mod node;
 pub(crate) mod selection;
@@ -12,6 +13,7 @@ mod utils;
 mod window_selection;
 
 use gpui::{App, ElementId, IntoElement, RenderOnce, SharedString, Window};
+pub use link_handler::set_link_handler;
 pub use markdown_ext::*;
 pub use node::TextMark;
 pub use state::*;

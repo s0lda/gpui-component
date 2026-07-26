@@ -133,7 +133,7 @@ impl InlineFlow {
                     .on_click(move |_, window, cx| {
                         window.end_text_selection(cx);
                         cx.stop_propagation();
-                        cx.open_url(&link.url);
+                        crate::text::link_handler::open_link(&link.url, cx);
                     })
             })
             .into_any_element()

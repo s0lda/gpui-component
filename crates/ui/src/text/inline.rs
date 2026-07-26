@@ -528,7 +528,7 @@ impl Element for Inline {
                     {
                         window.end_text_selection(cx);
                         cx.stop_propagation();
-                        cx.open_url(&link.url);
+                        crate::text::link_handler::open_link(&link.url, cx);
                     }
                 }
             });
